@@ -1,4 +1,5 @@
 #### Setup
+The script requires Python3 and ssh.
 
 Install all required python packages
 ```bash
@@ -13,7 +14,7 @@ Create a `.env` file under the same directory as `main.py`. The variables includ
 - `RESUME`: DBLP website implements rate limiting. When the limit exceeds, the current progress are written to `OUT_DIR/resume.json`. To continue, wait a few minutes, set `RESUME` to the path to `resume.json`, and run the script again. 
 - `DB_IP`: The IP address of the database.
 - `SSH_USER`: The user name used for SSH connection.
-- `SSH_KEY`: The private SSH key file. The SSH key can be downloaded from the VIDURA web app after authentication
+- `SSH_KEY`: The private SSH key file. The SSH key can be downloaded from the VIDURA web app after authentication. Click on the Account icon in the app bar, then click Get SSH Key.
 
 An example of `.env`:
 ```bash
