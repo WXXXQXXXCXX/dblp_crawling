@@ -9,6 +9,7 @@ scp -i "${SSH_KEY}" \
   "${OUT_DIR}/dblp_info.csv" \
   "${OUT_DIR}/coauthors.csv" \
   "${OUT_DIR}/dblp_expertise.csv" \
+  "${OUT_DIR}/expertise.csv" \
   ${SSH_USER}@${DB_IP}:/tmp/new_dblp/
 
 ssh -i "${SSH_KEY}" ${SSH_USER}@${DB_IP} "bash /opt/update-dblp.sh"

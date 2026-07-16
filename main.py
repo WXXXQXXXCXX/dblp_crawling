@@ -2,7 +2,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 import json
-import sys
 import time
 from typing import Dict, Set, List
 import xml.etree.ElementTree as ETree
@@ -10,13 +9,14 @@ from sentence_transformers import SentenceTransformer
 from unidecode import unidecode
 import requests
 import csv
-from argparse import ArgumentParser
 from pathlib import Path
 import pandas as pd
 
 from encoder import ExpertiseMatcher
 
 import logging
+
+from utils import Parser
 logger = logging.getLogger(__name__)
 
 DBLP_INFO_FIELDS = [
@@ -119,7 +119,7 @@ def readAuthorDBLP(xml_file):
             is_disambiguation_page=True,
         )
 
-    titles = []
+    titles = set()
     for record in records:
         papers = list(record)
         for paper in papers:
@@ -132,19 +132,18 @@ def readAuthorDBLP(xml_file):
                 if item.tag == "year":
                     year_tag = int(item.text)
                 if item.tag == "title" and item.text is not None:
-                    titles.append(item.text)
+                    titles.add(item.text)
             if year_tag:
                 year_set.add(year_tag)
                 for author in temp_author_set:
                     cauthor_hist_dict[author][year_tag] += 1
             temp_author_set.clear()
-    logger.info(f"Sample of papers: {titles[:2]}")
     return AuthorDBLPResult(
         person_name=person_file_name,
         person_pid=person_pid,
         cauthor_history=cauthor_hist_dict,
         publication_years=year_set,
-        publication_titles=titles,
+        publication_titles=list(titles),
         is_disambiguation_page=False,
     )
 
@@ -237,26 +236,27 @@ def process_dblp(url, matcher: ExpertiseMatcher, dblp_csv: str, dblp_expertise_c
     logger.info(f"{url}: calculating title embeddings")
     title_embeddings = matcher.encode(author_result.publication_titles)
     logger.info(f"{url}: found {len(title_embeddings)} titles, calculating clusters")
-    cluster_avg = matcher.cluster(title_embeddings)
-    logger.info(f"{url}: {len(cluster_avg)} clusters found, calculating matches")
-    results = matcher.find_matches(cluster_avg, matching_min_cosine_similarity)
-    valid_exps = set([i for i in results if i is not None])
+    # cluster_avg, cluster_members = matcher.cluster(title_embeddings)
+    # logger.info(f"{url}: {len(cluster_avg)} clusters found, calculating matches")
+    results, best_scores = matcher.find_matches(title_embeddings)
+
+    valid_exps = set()
+    for eid, sim, title in zip(results, best_scores, author_result.publication_titles):
+        if sim < min_similarity:
+            logger.info(f"no match: {title}")
+        else:
+            logger.info(f"match={eid + 1} score={sim} {title}")
+            valid_exps.add(eid)
 
     with open(dblp_expertise_csv, mode='a', encoding='utf-8') as f:
-        logger.info(f"{url}: writing to dblp_expertise, total {len(valid_exps)}")
         writer = csv.DictWriter(f, DBLP_EXPERTISE_FIELDS)
         writer.writerows(
             [
-                {"dblp": url, "expertise": exp, "auto_filled": True}
+                {"dblp": url, "expertise": exp + 1, "auto_filled": True}
                 for exp in valid_exps
             ]
         )
 
-class Parser(ArgumentParser):
-    def error(self, message):
-        sys.stderr.write(f"Error: {message}\n\n")
-        self.print_help()
-        sys.exit(2)
 
 def define_args():
     parser = Parser()
@@ -273,6 +273,13 @@ def define_args():
         dest="input",
         help="CSV file containing a list of DBLP URLs to read",
         type=str,
+    )
+    parser.add_argument(
+        "-t",
+        "--topics",
+        dest='topics',
+        help='text file with all topics of interest',
+        type=str
     )
     parser.add_argument(
         "-c",
@@ -297,6 +304,14 @@ def define_args():
     )
     return parser
 
+def _check_file(path: str, suffix: str):
+    f = Path(path)
+
+    assert f.is_file(), f"{input_file} does not exist."
+    assert f.suffix.lower() == suffix, f"{path} is not a {suffix} file."
+
+    return f
+
 if __name__ == '__main__':
     parser = define_args()
     args = parser.parse_args()
@@ -319,16 +334,17 @@ if __name__ == '__main__':
     input_file = None
     dblp_col = None
 
+    # start fresh, create output files and check input files
     if args.resume is None:
         directory = Path(args.outDir)
         if not directory.is_dir():
             raise FileNotFoundError(f"Directory {args.outDir} does not exist")
 
         input_file = args.input
-        dblp_csv = Path(input_file)
+        dblp_csv = _check_file(input_file, '.csv')
 
-        assert dblp_csv.is_file(), f"{input_file} does not exist."
-        assert dblp_csv.suffix.lower() == '.csv', f"{dblp_csv} is not a CSV file."
+        exp_file = args.topics
+        exp_txt = _check_file(exp_file, ".txt")
 
         with dblp_csv.open(newline="", encoding="utf-8") as f:
             reader = csv.reader(f)
@@ -358,11 +374,27 @@ if __name__ == '__main__':
                 writer = csv.writer(f)
                 writer.writerow(COAUTHOR_FIELDS)
 
+        with open(exp_txt, 'r', encoding='utf-8') as f:
+            lines = [l.strip() for l in f if l.strip()]
+
         logger.info("loading model")
         model = SentenceTransformer("all-mpnet-base-v2")
-        matcher = ExpertiseMatcher(model, expertise_csv)
+
+        with open(expertise_csv, newline='', encoding='utf-8') as f:
+            idx = sum(1 for _ in f) + 1
+
+        with open(expertise_csv, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            batch_size = 32
+            for start in range(0, len(lines), batch_size):
+                batch = lines[start: start + batch_size]
+                embs = model.encode(batch, batch_size=32, show_progress_bar=False)
+                for txt, emb in zip(batch, embs):
+                    writer.writerow([idx, txt, json.dumps(emb.tolist())])
+                    idx += 1
 
         min_similarity = args.minSimilarity
+        matcher = ExpertiseMatcher(model, expertise_csv)
     else:
         with open(args.resume, encoding='utf-8') as f:
             prev = json.load(f)
@@ -381,7 +413,7 @@ if __name__ == '__main__':
         model = SentenceTransformer("all-mpnet-base-v2")
         matcher = ExpertiseMatcher(model, directory / "expertise.csv")
 
-    logger.info(f"start fetching from {starting_row}")
+    logger.info(f"start fetching from {starting_row}, min_similarity={min_similarity}")
     with open(input_file, newline="", encoding='utf-8') as f:
         reader = csv.DictReader(f)
 
@@ -413,7 +445,7 @@ if __name__ == '__main__':
                         "dblp_col": dblp_col
                     }, f)
                 break
-    
+
     logger.info("removing duplicates")
     coauthors_df = pd.read_csv(coauthor_csv)
     dblp_info_df = pd.read_csv(dblp_info_csv).drop_duplicates(subset=["url"])

@@ -7,12 +7,9 @@ source "${SCRIPT_DIR}/.env"
 mkdir -p ${OUT_DIR}
 
 CSV="${OUT_DIR}/expertise.csv"
+
 if [ ! -f "${CSV}" ]; then
     scp -i "${SSH_KEY}" ${SSH_USER}@${DB_IP}:/tmp/expertise.csv "${CSV}"
 fi
 
-if [ -z "${RESUME}" ]; then
-  python main.py -o "${OUT_DIR}" -i "${IN_DIR}" -c ${COLUMN} -s ${SIMILARITY_THRESHOLD} -t ${TOPICS}
-else
-  python main.py --resume "${RESUME}"
-fi
+python expertise.py -t "${TOPICS}" -e "${CSV}" -o "${OUT_DIR}"
