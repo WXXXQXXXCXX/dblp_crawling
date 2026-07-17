@@ -279,7 +279,7 @@ def define_args():
         "--topics",
         dest='topics',
         help='text file with all topics of interest',
-        type=str
+        type=str,
     )
     parser.add_argument(
         "-c",
@@ -321,7 +321,8 @@ if __name__ == '__main__':
     # check required arguments
     starting_row = 0
     if args.resume is None:
-        missing = [f"--{k}" for k, v in vars(args).items() if v is None and k != 'resume']
+        required = {'outDir', 'input', 'dblpCol', 'minSimilarity'}
+        missing = [f"--{k}" for k, v in vars(args).items() if v is None and k in required]
 
         if missing:
             parser.error("the following arguments are required: " + ", ".join(missing))
@@ -344,7 +345,6 @@ if __name__ == '__main__':
         dblp_csv = _check_file(input_file, '.csv')
 
         exp_file = args.topics
-        exp_txt = _check_file(exp_file, ".txt")
 
         with dblp_csv.open(newline="", encoding="utf-8") as f:
             reader = csv.reader(f)
@@ -374,24 +374,25 @@ if __name__ == '__main__':
                 writer = csv.writer(f)
                 writer.writerow(COAUTHOR_FIELDS)
 
-        with open(exp_txt, 'r', encoding='utf-8') as f:
-            lines = [l.strip() for l in f if l.strip()]
-
         logger.info("loading model")
         model = SentenceTransformer("all-mpnet-base-v2")
 
-        with open(expertise_csv, newline='', encoding='utf-8') as f:
-            idx = sum(1 for _ in f) + 1
+        if Path(exp_file).is_file():
+            with open(exp_file, "r", encoding="utf-8") as f:
+                lines = [l.strip() for l in f if l.strip()]
 
-        with open(expertise_csv, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            batch_size = 32
-            for start in range(0, len(lines), batch_size):
-                batch = lines[start: start + batch_size]
-                embs = model.encode(batch, batch_size=32, show_progress_bar=False)
-                for txt, emb in zip(batch, embs):
-                    writer.writerow([idx, txt, json.dumps(emb.tolist())])
-                    idx += 1
+            with open(expertise_csv, newline='', encoding='utf-8') as f:
+                idx = sum(1 for _ in f) + 1
+
+            with open(expertise_csv, 'a', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                batch_size = 32
+                for start in range(0, len(lines), batch_size):
+                    batch = lines[start: start + batch_size]
+                    embs = model.encode(batch, batch_size=32, show_progress_bar=False)
+                    for txt, emb in zip(batch, embs):
+                        writer.writerow([idx, txt, json.dumps(emb.tolist())])
+                        idx += 1
 
         min_similarity = args.minSimilarity
         matcher = ExpertiseMatcher(model, expertise_csv)
