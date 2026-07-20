@@ -12,10 +12,15 @@ if [ ! -f "${CSV}" ]; then
 fi
 
 if [ -z "${RESUME}" ]; then
-  args=(-o "${OUT_DIR}" -i "${IN_DIR}" -s "${SIMILARITY_THRESHOLD}")
+  args=(-o "${OUT_DIR}" -i "${IN_DIR}")
   if [[ -n "${TOPICS}" ]]; then
     args+=(-t "${TOPICS}")
   fi
+
+  if [[ -n "${SIMILARITY_THRESHOLD}" ]]; then
+    args+=(-s "${SIMILARITY_THRESHOLD}")
+  fi
+
   python main.py "${args[@]}"
 
 else

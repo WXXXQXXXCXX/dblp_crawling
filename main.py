@@ -314,7 +314,7 @@ if __name__ == '__main__':
     # check required arguments
     starting_row = 0
     if args.resume is None:
-        required = {'outDir', 'input', 'dblpCol', 'minSimilarity'}
+        required = {'outDir', 'input', 'dblpCol'}
         missing = [f"--{k}" for k, v in vars(args).items() if v is None and k in required]
 
         if missing:
@@ -403,6 +403,8 @@ if __name__ == '__main__':
             if idx < starting_row:
                 continue
             url = url.strip()
+            if len(url) == 0:
+                continue
             try:
                 process_dblp(
                     url,
