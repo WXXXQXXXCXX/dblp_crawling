@@ -271,7 +271,7 @@ def define_args():
         "-i",
         "--input",
         dest="input",
-        help="CSV file containing a list of DBLP URLs to read",
+        help="Text file containing a list of DBLP URLs to read",
         type=str,
     )
     parser.add_argument(
@@ -279,13 +279,6 @@ def define_args():
         "--topics",
         dest='topics',
         help='text file with all topics of interest',
-        type=str,
-    )
-    parser.add_argument(
-        "-c",
-        "--dblpCol",
-        dest="dblpCol",
-        help="column inside the input file in -i that contains the URLs",
         type=str,
     )
     parser.add_argument(
@@ -333,7 +326,6 @@ if __name__ == '__main__':
     coauthor_csv = None
     min_similarity = None,
     input_file = None
-    dblp_col = None
 
     # start fresh, create output files and check input files
     if args.resume is None:
@@ -342,18 +334,9 @@ if __name__ == '__main__':
             raise FileNotFoundError(f"Directory {args.outDir} does not exist")
 
         input_file = args.input
-        dblp_csv = _check_file(input_file, '.csv')
+        dblp_txt = _check_file(input_file, '.txt')
 
         exp_file = args.topics
-
-        with dblp_csv.open(newline="", encoding="utf-8") as f:
-            reader = csv.reader(f)
-            headers = next(reader, None)
-
-        assert headers is not None, f"{input_file} is empty."
-
-        dblp_col = args.dblpCol
-        assert dblp_col in headers, f"{dblp_col} not found in file {input_file}"
 
         # create output files
         logger.info("creating output files")
@@ -377,7 +360,8 @@ if __name__ == '__main__':
         logger.info("loading model")
         model = SentenceTransformer("all-mpnet-base-v2")
 
-        if Path(exp_file).is_file():
+        if args.topics:
+            exp_file = _check_file(args.topics, '.txt')
             with open(exp_file, "r", encoding="utf-8") as f:
                 lines = [l.strip() for l in f if l.strip()]
 
@@ -403,7 +387,6 @@ if __name__ == '__main__':
             min_similarity = prev['min_similarity']
             directory = Path(prev['out_dir'])
             input_file = prev['input']
-            dblp_col = prev['dblp_col']
             logger.info(f"resuming from row {starting_row}")
 
         dblp_info_csv = directory / "dblp_info.csv"
@@ -415,14 +398,11 @@ if __name__ == '__main__':
         matcher = ExpertiseMatcher(model, directory / "expertise.csv")
 
     logger.info(f"start fetching from {starting_row}, min_similarity={min_similarity}")
-    with open(input_file, newline="", encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-
-        for idx, row in enumerate(reader):
+    with open(input_file, encoding='utf-8') as f:
+        for idx, url in enumerate(f):
             if idx < starting_row:
                 continue
-
-            url = row[dblp_col]
+            url = url.strip()
             try:
                 process_dblp(
                     url,
@@ -443,7 +423,6 @@ if __name__ == '__main__':
                         "out_dir": directory, 
                         "min_similarity": min_similarity,
                         "input": input_file,
-                        "dblp_col": dblp_col
                     }, f)
                 break
 

@@ -12,7 +12,7 @@ if [ ! -f "${CSV}" ]; then
 fi
 
 if [ -z "${RESUME}" ]; then
-  args=(-o "${OUT_DIR}" -i "${IN_DIR}" -c "${COLUMN}" -s "${SIMILARITY_THRESHOLD}")
+  args=(-o "${OUT_DIR}" -i "${IN_DIR}" -s "${SIMILARITY_THRESHOLD}")
   if [[ -n "${TOPICS}" ]]; then
     args+=(-t "${TOPICS}")
   fi
